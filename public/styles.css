@@ -1,0 +1,29 @@
+/*
+  Name: Darel Hansel Gunawan
+  Date: 05.18.2022
+  Section: CSE 154 AC
+
+  This is the styles.css file that is used by index.html in this budget manager web app. It uses
+  bootstrap for most of the styling. This css only provides fixed sized cards, invisible elements,
+  and hidden elements.
+*/
+
+.card {
+  width: 28rem;
+}
+
+.hidden {
+  display: none;
+}
+
+.invisible {
+  visibility: hidden;
+}
+
+#login {
+  position: fixed;
+  min-width: 200px;
+  width: 25%;
+  top: 30%;
+  left: 25%
+}
