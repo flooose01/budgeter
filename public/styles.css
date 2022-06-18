@@ -20,10 +20,29 @@
   visibility: hidden;
 }
 
-#login {
+.status {
+  color: red;
+}
+
+.buttons {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.buttons > button {
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+}
+
+#login, #register {
+  min-height: 100vh;
+}
+
+#logout {
+  padding: 30px;
+  font-size: 1.5rem;
   position: fixed;
-  min-width: 200px;
-  width: 25%;
-  top: 30%;
-  left: 25%
+  bottom: 0;
+  right: 0;
 }

@@ -36,6 +36,11 @@ const INVALID_USERNAME = "Invalid user";
 const CATEGORY_EXIST = "Category already exist";
 const INVALID_CATEGORY = "Invalid category";
 const INVALID_EXPENSE = "Invalid expense";
+const SUCCESSFUL_LOGOUT = "Logout successful";
+const UNSUCCESSFUL_LOGOUT = "Logout failed";
+
+const USERNAME_RULES = "Username must not contain whitespace";
+const PASSWORD_RULES = "must be 3-8 characters, contains at least 1 number and letter";
 
 app.use(sessions({
   secret: "thisismysecrctekeyfhrgfgrfrty84fwir767", // Change secret
@@ -48,6 +53,9 @@ app.use(express.urlencoded({extended: true}));
 app.use(express.json());
 app.use(multer().none());
 
+/**
+ * Login with the given username and password
+ */
 app.post("/login", async (req, res) => {
   let username = req.body.username;
   let password = req.body.password;
@@ -75,31 +83,53 @@ app.post("/login", async (req, res) => {
 });
 
 /**
- * Registers a given username if username is not registered yet, and return an empty expense
- * category object. If given username is already registered, return its old expense category
- * object
+ * Logs out off the session
+ */
+app.get("/logout", (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      res.type("text").status(SERVER_ERROR_CODE)
+        .send(SUCCESSFUL_LOGOUT);
+    } else {
+      res.send(SUCCESSFUL_LOGOUT);
+    }
+  });
+})
+
+/**
+ * Registers a given username if username is not registered yet
  */
 app.post("/register", async (req, res) => {
   let username = req.body.username;
   let password = req.body.password;
-  if (username && password && usernameValid(username) && passwordValid(password)) {
-    try {
-      let db = await getDBConnection();
-      let user = await usernameID(db, username);
-      if (!user) {
-        let hashedPassword = await bcrypt.hash(password, 10);
-        let query = "INSERT INTO users (username, password) VALUES (?, ?);";
-        await db.run(query, [username, hashedPassword]);
-        await db.close();
-        res.type("text").send(SUCCESSFUL_REGIS);
+  if (username && password) {
+    if (usernameValid(username)) {
+      if (passwordValid(password)) {
+        try {
+          let db = await getDBConnection();
+          let user = await usernameID(db, username);
+          if (!user) {
+            let hashedPassword = await bcrypt.hash(password, 10);
+            let query = "INSERT INTO users (username, password) VALUES (?, ?);";
+            await db.run(query, [username, hashedPassword]);
+            await db.close();
+            res.type("text").send(SUCCESSFUL_REGIS);
+          } else {
+            await db.close();
+            res.type("text").status(CLIENT_ERROR_CODE)
+              .send(USERNAME_EXIST);
+          }
+        } catch (err) {
+          res.type("text").status(SERVER_ERROR_CODE)
+            .send(SERVER_ERROR_MSG);
+        }
       } else {
-        await db.close();
         res.type("text").status(CLIENT_ERROR_CODE)
-          .send(USERNAME_EXIST);
+          .send(PASSWORD_RULES);
       }
-    } catch (err) {
-      res.type("text").status(SERVER_ERROR_CODE)
-        .send(SERVER_ERROR_MSG);
+    } else {
+      res.type("text").status(CLIENT_ERROR_CODE)
+        .send(USERNAME_RULES);
     }
   } else {
     res.type("text").status(CLIENT_ERROR_CODE)
@@ -108,22 +138,22 @@ app.post("/register", async (req, res) => {
 });
 
 /**
- * Returns a JSON object that consist of all categories of the user if no query params. If id
- * query params is given, returns a JSON object of the category of given id
+ * Returns a JSON object that consist of all categories of the user if no query params. If category
+ * query params is given, returns a JSON object of the category of given name
  */
 app.get("/categories", async (req, res) => {
-  let categoryID = req.query.id;
+  let name = req.query.name;
   let username = req.session.username;
   try {
     let db = await getDBConnection();
     let user = await usernameID(db, username);
     if (user) {
-      if (categoryID) {
-        let query = "SELECT id, category, budget FROM categories WHERE user_id = ? AND id = ?";
-        let category = await db.get(query, [user.id, categoryID]);
+      if (name) {
+        let query = "SELECT id, category, budget FROM categories WHERE user_id = ? AND category = ?";
+        let category = await db.get(query, [user.id, name]);
         if (category) {
           query = "SELECT * FROM expenses WHERE category_id = ?";
-          let expenses = await db.all(query, categoryID);
+          let expenses = await db.all(query, category.id);
           category.expenses = expenses;
           await db.close();
           res.json(category);
@@ -195,7 +225,7 @@ app.get("/total", async (req, res) => {
 });
 
 /**
- * Adds a new category to the specified user's expense categories
+ * Adds a new category to the specified user's expenses
  */
 app.post("/addCategory", async (req, res) => {
   let username = req.session.username;
@@ -217,8 +247,19 @@ app.post("/addCategory", async (req, res) => {
           if (!categoryObj) {
             let query = "INSERT INTO categories (category, budget, user_id) VALUES (?, ?, ?);";
             await db.run(query, [category, budget, user.id]);
-            await db.close();
-            res.send(SUCCESSFUL_REGIS);
+            query = "SELECT id, category, budget FROM categories WHERE user_id = ? AND category = ?";
+            let categoryRes = await db.get(query, [user.id, category]);
+            if (categoryRes) {
+              query = "SELECT * FROM expenses WHERE category_id = ?";
+              let expenses = await db.all(query, categoryRes.id);
+              categoryRes.expenses = expenses;
+              await db.close();
+              res.json(categoryRes);
+            } else {
+              await db.close();
+              res.type("text").status(CLIENT_ERROR_CODE)
+                .send(INVALID_CATEGORY);
+            }
           } else {
             await db.close();
             res.type("text").status(CLIENT_ERROR_CODE)
@@ -241,7 +282,7 @@ app.post("/addCategory", async (req, res) => {
 });
 
 /**
- * Adds a new expense to the specified user's given category. Returns the updated category object.
+ * Adds a new expense to the specified user's given category. Returns the new expenses.
  */
 app.post("/addExpense", async (req, res) => {
   let username = req.session.username;
@@ -259,11 +300,21 @@ app.post("/addExpense", async (req, res) => {
           if (categoryObj) {
             let query = "INSERT INTO expenses (category_id, name, expense, description) \
               VALUES (?, ?, ?, ?);";
-            let queryRes = await db.run(query, [categoryObj.id, name, expense, description]);
-            query = "SELECT * FROM expenses WHERE id = ?";
-            let result = await db.get(query, queryRes.lastID);
-            await db.close();
-            res.json(result);
+            await db.run(query, [categoryObj.id, name, expense, description]);
+
+            query = "SELECT id, category, budget FROM categories WHERE id = ?";
+            let categoryRes = await db.get(query, categoryObj.id);
+            if (categoryRes) {
+              query = "SELECT * FROM expenses WHERE category_id = ?";
+              let expenses = await db.all(query, categoryRes.id);
+              categoryRes.expenses = expenses;
+              await db.close();
+              res.json(categoryRes);
+            } else {
+              await db.close();
+              res.type("text").status(CLIENT_ERROR_CODE)
+                .send(INVALID_CATEGORY);
+            }
           } else {
             await db.close();
             res.type("text").status(CLIENT_ERROR_CODE)
@@ -289,8 +340,7 @@ app.post("/addExpense", async (req, res) => {
 });
 
 /**
- * Deletes a category from the user's expense categories. Returns the updated expense categories of
- * the user.
+ * Deletes a category from the user's expenses
  */
 app.delete("/deleteCategory", async (req, res) => {
   let category = req.body.category;
@@ -306,12 +356,15 @@ app.delete("/deleteCategory", async (req, res) => {
           await db.run(query, categoryObj.id);
           query = "DELETE FROM categories WHERE id = ?";
           await db.run(query, categoryObj.id);
+          await db.close();
           res.type("text").send(SUCCESSFUL_DELETE);
         } else {
+          await db.close();
           res.type("text").status(CLIENT_ERROR_CODE)
             .send(INVALID_CATEGORY);
         }
       } else {
+        await db.close();
         res.type("text").status(CLIENT_ERROR_CODE)
           .send(INVALID_USERNAME);
       }
@@ -326,8 +379,7 @@ app.delete("/deleteCategory", async (req, res) => {
 });
 
 /**
- * Deletes an expense with given id from the specified's user given category. If no such expense
- * exists, the expenses remain untouched. Othewise, returns the updated category object.
+ * Deletes an expense with given id from the user's expenses
  */
 app.delete("/deleteExpense", async (req, res) => {
   let username = req.session.username;
@@ -341,12 +393,27 @@ app.delete("/deleteExpense", async (req, res) => {
         if (expenseObj) {
           let query = "DELETE FROM expenses WHERE id = ?";
           await db.run(query, id);
-          res.type("text").send(SUCCESSFUL_DELETE);
+
+          query = "SELECT id, category, budget FROM categories WHERE id = ?";
+          let categoryRes = await db.get(query, expenseObj.category_id);
+          if (categoryRes) {
+            query = "SELECT * FROM expenses WHERE category_id = ?";
+            let expenses = await db.all(query, categoryRes.id);
+            categoryRes.expenses = expenses;
+            await db.close();
+            res.json(categoryRes);
+          } else {
+            await db.close();
+            res.type("text").status(CLIENT_ERROR_CODE)
+              .send(INVALID_CATEGORY);
+          }
         } else {
+          await db.close();
           res.type("text").status(CLIENT_ERROR_CODE)
             .send(INVALID_EXPENSE);
         }
       } else {
+        await db.close();
         res.type("text").status(CLIENT_ERROR_CODE)
           .send(INVALID_USERNAME);
       }
@@ -370,46 +437,58 @@ function containsWhitespace(str) {
 }
 
 /**
- * Reads file from expense categories file and parse it into json format.
- * @returns {Object} JSON formatted expense categories
- */
-async function readFile() {
-  let contents = await fs.readFile(EXPENSES_FILE, "utf8");
-  return JSON.parse(contents);
-}
-
-/**
- * Rules: None
+ * Rules: Must not contain whitespace
  * @param {String} username username to check if valid
  * @returns {boolean} true if username is valid, false otherwise
  */
 function usernameValid(username) {
-  return true;
+  return !containsWhitespace(username);
 }
 
 /**
- * Rules: None
+ * Rules: 3-8 characters, must contain at least 1 letter and number
  * @param {String} password password to check if valid
  * @returns {boolean} true if password is valid, false otherwise
  */
 function passwordValid(password) {
-  return true;
+  return password.length <= 8 && password.length >= 3 && /[0-9]+/.test(password) &&
+    /[a-zA-Z]+/.test(password);
 }
 
+/**
+ * Returns an object with category id with name of given category and user id of given user id
+ * @param {Object} db Database
+ * @param {String} category Category to check
+ * @param {number} user_id User's id to check
+ * @returns {Object} id of category with given category and user id
+ */
 async function categoryID(db, category, user_id) {
   let query = "SELECT id FROM categories WHERE category = ? AND user_id = ?";
   let categoryID = await db.get(query, [category, user_id]);
   return categoryID;
 }
 
+/**
+ * Returns id of username with given name
+ * @param {Object} db Database
+ * @param {String} username Name to check
+ * @returns {Object} id of username with given name
+ */
 async function usernameID(db, username) {
   let query = "SELECT id FROM users WHERE username = ?";
   let userID = await db.get(query, username);
   return userID;
 }
 
+/**
+ * Returns id of expense with given id and owned by user
+ * @param {Object} db Database
+ * @param {number} id Id of expense
+ * @param {number} user_id Id of user
+ * @returns {Object} id of expense with given id and owned by user
+ */
 async function expenseValid(db, id, user_id) {
-  let query = "SELECT e.id FROM expenses e \
+  let query = "SELECT * FROM expenses e \
     JOIN categories c ON c.id = e.category_id \
     JOIN users u ON u.id = c.user_id \
     WHERE e.id = ? AND u.id = ?";

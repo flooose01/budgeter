@@ -7,13 +7,12 @@
  * and updating the necessary information about the client's expense in different categories
  * of expense.
  */
+
 "use strict";
 
 (function() {
   const ONE_HUNDRED = 100;
   const RED_REGION = 75;
-
-  let username = "";
 
   window.addEventListener("load", init);
 
@@ -21,30 +20,6 @@
    * Initializes the login page
    */
   function init() {
-    qs("#login button").addEventListener("click", login);
-  }
-
-  /**
-   * Register user's input as new username or as a returning user.
-   */
-  function login() {
-    username = id("input-username").value;
-    let params = new FormData();
-    params.append("username", username);
-    fetch("/register", {method: "POST", body: params})
-      .then(checkStatus)
-      .then(loadUserExpenses)
-      .catch((err) => {
-        qs("#login .status").textContent = err;
-      });
-  }
-
-  /**
-   * Loads user's previous expenses and enables control buttons
-   */
-  function loadUserExpenses() {
-    id("login").classList.add("hidden");
-    id("expense-container").classList.remove("hidden");
     qs("#total button").setAttribute("category", "total");
     id("add-category-btn").addEventListener("click", addCategory);
     id("add-expense-btn").addEventListener("click", fetchAddExpense);
@@ -53,20 +28,34 @@
     id("add-expense-modal").addEventListener("show.bs.modal", addExpense);
     id("view-expense-modal").addEventListener("show.bs.modal", viewExpenses);
     id("delete-category-modal").addEventListener("show.bs.modal", deleteCategory);
+
+    id("logout").addEventListener("click", logout);
     loadAllExpenses();
+  }
+
+  /**
+   * Logs out account
+   */
+  async function logout() {
+    fetch("/logout")
+      .then(checkStatus)
+      .then(() => {
+        window.location.href = "/login.html";
+      })
+      .catch(console.error);
   }
 
   /**
    * Load user's previous expenses
    */
   function loadAllExpenses() {
-    fetch("/getAllExpense/" + username)
+    fetch("/categories")
       .then(checkStatus)
       .then(res => res.json())
       .then(expenses => Object.values(expenses).forEach(showCategory))
       .then(updateTotal)
       .catch(() => {
-        id("expense-container").textContent = "Error loading expenses. Reload the page";
+        id("expense-container").textContent = "Error loading expenses. Try again";
       });
   }
 
@@ -86,9 +75,10 @@
    */
   function fetchDeleteCategory(event) {
     let category = event.currentTarget.getAttribute("curr-category");
-    fetch("/deleteCategory/" + username + "/" + category, {method: "DELETE"})
+    let params = new FormData();
+    params.append("category", category);
+    fetch("/deleteCategory", {method: "DELETE", body: params})
       .then(checkStatus)
-      .then(res => res.json())
       .then(() => id(category).remove())
       .then(updateTotal)
       .catch(err => showErrorMessage(err, "delete-category-modal"));
@@ -102,9 +92,9 @@
     let category = event.relatedTarget.getAttribute("category");
     let promise;
     if (category === "total") {
-      promise = fetch("/getTotalExpense/" + username);
+      promise = fetch("/total");
     } else {
-      promise = fetch("/getCategory/" + username + "/" + category);
+      promise = fetch("/categories?name=" + category);
     }
     promise
       .then(checkStatus)
@@ -146,11 +136,13 @@
    * @param {Object} exp Expense object
    */
   function deleteExpense(exp) {
-    fetch("/deleteExpense/" + username + "/" + exp.category + "/" + exp.id, {method: "DELETE"})
+    let params = new FormData();
+    params.append("id", exp.id);
+    fetch("/deleteExpense", {method: "DELETE", body: params})
       .then(checkStatus)
       .then(res => res.json())
       .then(updateCategory)
-      .then(() => id(exp.id).classList.add("hidden"))
+      .then(() => id(exp.id).remove())
       .then(updateTotal)
       .catch(err => showErrorMessage(err, "view-expense-modal"));
   }
@@ -172,7 +164,8 @@
   function fetchAddExpense(event) {
     let category = event.currentTarget.getAttribute("curr-category");
     let params = new FormData(id("expense-form"));
-    fetch("/addExpense/" + username + "/" + category, {method: "POST", body: params})
+    params.append("category", category);
+    fetch("/addExpense", {method: "POST", body: params})
       .then(checkStatus)
       .then(res => res.json())
       .then(updateCategory)
@@ -186,7 +179,7 @@
    */
   function addCategory() {
     let params = new FormData(id("category-form"));
-    fetch("/addCategory/" + username, {method: "POST", body: params})
+    fetch("/addCategory", {method: "POST", body: params})
       .then(checkStatus)
       .then(res => res.json())
       .then(showCategory)
@@ -229,15 +222,16 @@
    * @param {Object} expense The updated expense category
    */
   function updateCategory(expense) {
+    let currExpense = getTotalExpense(expense.expenses);
     let category = expense.category;
     let categoryCard = id(category);
-    categoryCard.querySelector(".expense").textContent = expense["curr-expense"];
-    categoryCard.querySelector(".budget").textContent = expense["max-budget"];
+    categoryCard.querySelector(".expense").textContent = currExpense;
+    categoryCard.querySelector(".budget").textContent = expense["budget"];
     let progressBar = categoryCard.querySelector(".progress-bar");
-    progressBar.setAttribute("aria-valuemax", expense["max-budget"]);
-    if (expense["max-budget"] !== 0) {
+    progressBar.setAttribute("aria-valuemax", expense["budget"]);
+    if (expense["budget"] !== 0) {
       categoryCard.querySelector(".progress").classList.remove("invisible");
-      let percent = Math.floor(ONE_HUNDRED * expense["curr-expense"] / expense["max-budget"]);
+      let percent = Math.floor(ONE_HUNDRED * currExpense / expense["budget"]);
       if (percent >= RED_REGION) {
         progressBar.classList.add("bg-danger");
       } else {
@@ -253,7 +247,7 @@
    * Updates the total category
    */
   function updateTotal() {
-    fetch("/getTotalExpense/" + username)
+    fetch("/total")
       .then(checkStatus)
       .then(res => res.json())
       .then(updateCategory)
@@ -275,7 +269,7 @@
    */
   function generateCategoryCard(exp) {
     let card = genElement("div", "card m-4");
-    card.id = exp["category"];
+    card.id = exp.category;
     let cardBody = genElement("div", "card-body");
     let cardTitle = generateCardTitle(exp);
     let progressBar = generateCardProgress(exp);
@@ -298,15 +292,15 @@
       "card-title d-flex justify-content-between align-items-baseline fw-normal mb-3"
     );
     let cardTitle = genElement("div", "me-2");
-    cardTitle.textContent = exp["name"];
+    cardTitle.textContent = exp["category"];
     let cardExpense = gen("div");
     cardExpense.textContent = "$";
     let expense = genElement("span", "expense");
-    expense.textContent = exp["curr-expense"];
+    expense.textContent = getTotalExpense(exp["expenses"]);
     let budgetCont = genElement("span", "text-muted small ms-1");
     budgetCont.textContent = " / $";
     let budget = genElement("span", "budget");
-    budget.textContent = exp["max-budget"];
+    budget.textContent = exp["budget"];
     budgetCont.appendChild(budget);
     cardExpense.appendChild(expense);
     cardExpense.appendChild(budgetCont);
@@ -315,22 +309,25 @@
     return cardHeader;
   }
 
+
+
   /**
    * Returns the progress bar of expense category card based on the given expense category object
    * @param {Object} exp Expense category
    * @returns {HTMLElement} Progress bar of expense category card
    */
   function generateCardProgress(exp) {
+    let expense = getTotalExpense(exp["expenses"])
     let pill = genElement("div", "progress rounded-pill");
     let progressBar = genElement("div", "progress-bar");
     progressBar.setAttribute("role", "progressbar");
-    progressBar.setAttribute("aria-valuenow", exp["curr-expense"]);
+    progressBar.setAttribute("aria-valuenow", expense);
     progressBar.setAttribute("aria-valuemin", "0");
-    progressBar.setAttribute("aria-valuemax", exp["max-budget"]);
+    progressBar.setAttribute("aria-valuemax", exp["budget"]);
     pill.appendChild(progressBar);
 
     if (exp["max-budget"] !== 0) {
-      let percent = Math.floor(ONE_HUNDRED * exp["curr-expense"] / exp["max-budget"]);
+      let percent = Math.floor(ONE_HUNDRED * expense / exp["budget"]);
       pill.classList.remove("invisible");
       if (percent >= RED_REGION) {
         progressBar.classList.add("bg-danger");
@@ -378,6 +375,19 @@
     buttonContainer.appendChild(delButton);
 
     return buttonContainer;
+  }
+
+  /**
+   * Returns the total expenses of a category
+   * @param {Object} expenses Expense category object
+   * @returns {number} The total expenses of a category
+   */
+  function getTotalExpense(expenses) {
+    let total = 0;
+    for (let i = 0; i < expenses.length; i++) {
+      total += expenses[i].expense;
+    }
+    return total;
   }
 
   /**
