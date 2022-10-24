@@ -56,6 +56,10 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(multer().none());
 
+app.get("/", (req, res) => {
+  res.send("Home");
+});
+
 /**
  * Login with the given username and password
  */
