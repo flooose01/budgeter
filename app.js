@@ -22,7 +22,7 @@ const ONE_DAY = 1000 * 60 * 60 * 24;
 const BUDGET_DB = "budget.db";
 const SERVER_ERROR_CODE = 500;
 const CLIENT_ERROR_CODE = 400;
-const DEFAULT_PORT = 8000;
+const DEFAULT_PORT = 8080;
 
 const SERVER_ERROR_MSG = "Something went wrong...";
 const MISSING_PARAMS = "Missing one or more fields";
@@ -40,16 +40,19 @@ const SUCCESSFUL_LOGOUT = "Logout successful";
 const UNSUCCESSFUL_LOGOUT = "Logout failed";
 
 const USERNAME_RULES = "Username must not contain whitespace";
-const PASSWORD_RULES = "must be 3-8 characters, contains at least 1 number and letter";
+const PASSWORD_RULES =
+  "must be 3-8 characters, contains at least 1 number and letter";
 
-app.use(sessions({
-  secret: "thisismysecrctekeyfhrgfgrfrty84fwir767", // Change secret
-  saveUninitialized: true,
-  cookie: { maxAge: ONE_DAY },
-  resave: false
-}));
+app.use(
+  sessions({
+    secret: "thisismysecrctekeyfhrgfgrfrty84fwir767", // Change secret
+    saveUninitialized: true,
+    cookie: { maxAge: ONE_DAY },
+    resave: false,
+  })
+);
 
-app.use(express.urlencoded({extended: true}));
+app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(multer().none());
 
@@ -65,20 +68,17 @@ app.post("/login", async (req, res) => {
       let query = "SELECT password FROM users WHERE username = ?;";
       let queryRes = await db.get(query, username);
       await db.close();
-      if (queryRes && await bcrypt.compare(password, queryRes.password)) {
+      if (queryRes && (await bcrypt.compare(password, queryRes.password))) {
         req.session.username = username;
         res.send(SUCCESSFUL_LOGIN);
       } else {
-        res.type("text").status(CLIENT_ERROR_CODE)
-        .send(INCORRECT_INFO);
+        res.type("text").status(CLIENT_ERROR_CODE).send(INCORRECT_INFO);
       }
     } catch (err) {
-      res.type("text").status(SERVER_ERROR_CODE)
-        .send(SERVER_ERROR_MSG);
+      res.type("text").status(SERVER_ERROR_CODE).send(SERVER_ERROR_MSG);
     }
   } else {
-    res.type("text").status(CLIENT_ERROR_CODE)
-      .send(MISSING_PARAMS);
+    res.type("text").status(CLIENT_ERROR_CODE).send(MISSING_PARAMS);
   }
 });
 
@@ -88,13 +88,12 @@ app.post("/login", async (req, res) => {
 app.get("/logout", (req, res) => {
   req.session.destroy((err) => {
     if (err) {
-      res.type("text").status(SERVER_ERROR_CODE)
-        .send(SUCCESSFUL_LOGOUT);
+      res.type("text").status(SERVER_ERROR_CODE).send(SUCCESSFUL_LOGOUT);
     } else {
       res.send(SUCCESSFUL_LOGOUT);
     }
   });
-})
+});
 
 /**
  * Registers a given username if username is not registered yet
@@ -116,24 +115,19 @@ app.post("/register", async (req, res) => {
             res.type("text").send(SUCCESSFUL_REGIS);
           } else {
             await db.close();
-            res.type("text").status(CLIENT_ERROR_CODE)
-              .send(USERNAME_EXIST);
+            res.type("text").status(CLIENT_ERROR_CODE).send(USERNAME_EXIST);
           }
         } catch (err) {
-          res.type("text").status(SERVER_ERROR_CODE)
-            .send(SERVER_ERROR_MSG);
+          res.type("text").status(SERVER_ERROR_CODE).send(SERVER_ERROR_MSG);
         }
       } else {
-        res.type("text").status(CLIENT_ERROR_CODE)
-          .send(PASSWORD_RULES);
+        res.type("text").status(CLIENT_ERROR_CODE).send(PASSWORD_RULES);
       }
     } else {
-      res.type("text").status(CLIENT_ERROR_CODE)
-        .send(USERNAME_RULES);
+      res.type("text").status(CLIENT_ERROR_CODE).send(USERNAME_RULES);
     }
   } else {
-    res.type("text").status(CLIENT_ERROR_CODE)
-      .send(INVALID_USERNAME);
+    res.type("text").status(CLIENT_ERROR_CODE).send(INVALID_USERNAME);
   }
 });
 
@@ -149,7 +143,8 @@ app.get("/categories", async (req, res) => {
     let user = await usernameID(db, username);
     if (user) {
       if (name) {
-        let query = "SELECT id, category, budget FROM categories WHERE user_id = ? AND category = ?";
+        let query =
+          "SELECT id, category, budget FROM categories WHERE user_id = ? AND category = ?";
         let category = await db.get(query, [user.id, name]);
         if (category) {
           query = "SELECT * FROM expenses WHERE category_id = ?";
@@ -159,11 +154,11 @@ app.get("/categories", async (req, res) => {
           res.json(category);
         } else {
           await db.close();
-          res.type("text").status(CLIENT_ERROR_CODE)
-            .send(INVALID_CATEGORY);
+          res.type("text").status(CLIENT_ERROR_CODE).send(INVALID_CATEGORY);
         }
       } else {
-        let query = "SELECT id, category, budget FROM categories WHERE user_id = ?";
+        let query =
+          "SELECT id, category, budget FROM categories WHERE user_id = ?";
         let categories = await db.all(query, user.id);
         for (let i = 0; i < categories.length; i++) {
           query = "SELECT * FROM expenses WHERE category_id = ?";
@@ -175,12 +170,10 @@ app.get("/categories", async (req, res) => {
       }
     } else {
       await db.close();
-      res.type("text").status(CLIENT_ERROR_CODE)
-        .send(INVALID_USERNAME);
+      res.type("text").status(CLIENT_ERROR_CODE).send(INVALID_USERNAME);
     }
   } catch (err) {
-    res.type("text").status(SERVER_ERROR_CODE)
-      .send(SERVER_ERROR_MSG);
+    res.type("text").status(SERVER_ERROR_CODE).send(SERVER_ERROR_MSG);
   }
 });
 
@@ -194,33 +187,36 @@ app.get("/total", async (req, res) => {
     let db = await getDBConnection();
     let user = await usernameID(db, username);
     if (user) {
-      let query = "SELECT id, category, budget FROM categories WHERE user_id = ?";
+      let query =
+        "SELECT id, category, budget FROM categories WHERE user_id = ?";
       let categories = await db.all(query, user.id);
       let totalBudget = 0;
       let allExpenses = [];
       for (let i = 0; i < categories.length; i++) {
         totalBudget += categories[i].budget;
-        query = "SELECT e.id, e.category_id, c.category, e.name, e.expense, e.description, e.date \
+        query =
+          "SELECT e.id, e.category_id, c.category, e.name, e.expense, e.description, e.date \
         FROM expenses e \
         JOIN categories c ON c.id = ? \
         WHERE category_id = ?";
-        let expenses = await db.all(query, [categories[i].id, categories[i].id]);
+        let expenses = await db.all(query, [
+          categories[i].id,
+          categories[i].id,
+        ]);
         allExpenses.push(...expenses);
       }
       await db.close();
       res.json({
-        "category": "total",
-        "budget": totalBudget,
-        "expenses": allExpenses
-      })
+        category: "total",
+        budget: totalBudget,
+        expenses: allExpenses,
+      });
     } else {
       await db.close();
-      res.type("text").status(CLIENT_ERROR_CODE)
-        .send(INVALID_USERNAME);
+      res.type("text").status(CLIENT_ERROR_CODE).send(INVALID_USERNAME);
     }
   } catch (err) {
-    res.type("text").status(SERVER_ERROR_CODE)
-      .send(SERVER_ERROR_MSG);
+    res.type("text").status(SERVER_ERROR_CODE).send(SERVER_ERROR_MSG);
   }
 });
 
@@ -233,10 +229,11 @@ app.post("/addCategory", async (req, res) => {
   let budget = parseInt(req.body.budget);
   if (budget && category) {
     if (budget <= 0) {
-      res.type("text").status(CLIENT_ERROR_CODE)
-        .send("Budget must be > 0");
+      res.type("text").status(CLIENT_ERROR_CODE).send("Budget must be > 0");
     } else if (containsWhitespace(category)) {
-      res.type("text").status(CLIENT_ERROR_CODE)
+      res
+        .type("text")
+        .status(CLIENT_ERROR_CODE)
         .send("Category must not contain whitespace");
     } else {
       try {
@@ -245,9 +242,11 @@ app.post("/addCategory", async (req, res) => {
         if (user) {
           let categoryObj = await categoryID(db, category, user.id);
           if (!categoryObj) {
-            let query = "INSERT INTO categories (category, budget, user_id) VALUES (?, ?, ?);";
+            let query =
+              "INSERT INTO categories (category, budget, user_id) VALUES (?, ?, ?);";
             await db.run(query, [category, budget, user.id]);
-            query = "SELECT id, category, budget FROM categories WHERE user_id = ? AND category = ?";
+            query =
+              "SELECT id, category, budget FROM categories WHERE user_id = ? AND category = ?";
             let categoryRes = await db.get(query, [user.id, category]);
             if (categoryRes) {
               query = "SELECT * FROM expenses WHERE category_id = ?";
@@ -257,27 +256,22 @@ app.post("/addCategory", async (req, res) => {
               res.json(categoryRes);
             } else {
               await db.close();
-              res.type("text").status(CLIENT_ERROR_CODE)
-                .send(INVALID_CATEGORY);
+              res.type("text").status(CLIENT_ERROR_CODE).send(INVALID_CATEGORY);
             }
           } else {
             await db.close();
-            res.type("text").status(CLIENT_ERROR_CODE)
-              .send(CATEGORY_EXIST);
+            res.type("text").status(CLIENT_ERROR_CODE).send(CATEGORY_EXIST);
           }
         } else {
           await db.close();
-          res.type("text").status(CLIENT_ERROR_CODE)
-            .send(INVALID_USERNAME);
+          res.type("text").status(CLIENT_ERROR_CODE).send(INVALID_USERNAME);
         }
       } catch (err) {
-        res.type("text").status(SERVER_ERROR_CODE)
-          .send(SERVER_ERROR_MSG);
+        res.type("text").status(SERVER_ERROR_CODE).send(SERVER_ERROR_MSG);
       }
     }
   } else {
-    res.type("text").status(CLIENT_ERROR_CODE)
-      .send(MISSING_PARAMS);
+    res.type("text").status(CLIENT_ERROR_CODE).send(MISSING_PARAMS);
   }
 });
 
@@ -298,7 +292,8 @@ app.post("/addExpense", async (req, res) => {
         if (user) {
           let categoryObj = await categoryID(db, category, user.id);
           if (categoryObj) {
-            let query = "INSERT INTO expenses (category_id, name, expense, description) \
+            let query =
+              "INSERT INTO expenses (category_id, name, expense, description) \
               VALUES (?, ?, ?, ?);";
             await db.run(query, [categoryObj.id, name, expense, description]);
 
@@ -312,30 +307,24 @@ app.post("/addExpense", async (req, res) => {
               res.json(categoryRes);
             } else {
               await db.close();
-              res.type("text").status(CLIENT_ERROR_CODE)
-                .send(INVALID_CATEGORY);
+              res.type("text").status(CLIENT_ERROR_CODE).send(INVALID_CATEGORY);
             }
           } else {
             await db.close();
-            res.type("text").status(CLIENT_ERROR_CODE)
-              .send(INVALID_CATEGORY);
+            res.type("text").status(CLIENT_ERROR_CODE).send(INVALID_CATEGORY);
           }
         } else {
           await db.close();
-          res.type("text").status(CLIENT_ERROR_CODE)
-            .send(INVALID_USERNAME);
+          res.type("text").status(CLIENT_ERROR_CODE).send(INVALID_USERNAME);
         }
       } catch (err) {
-          res.type("text").status(SERVER_ERROR_CODE)
-            .send(SERVER_ERROR_MSG);
+        res.type("text").status(SERVER_ERROR_CODE).send(SERVER_ERROR_MSG);
       }
     } else {
-      res.type("text").status(CLIENT_ERROR_CODE)
-        .send(INVALID_PARAMS);
+      res.type("text").status(CLIENT_ERROR_CODE).send(INVALID_PARAMS);
     }
   } else {
-    res.type("text").status(CLIENT_ERROR_CODE)
-      .send(MISSING_PARAMS);
+    res.type("text").status(CLIENT_ERROR_CODE).send(MISSING_PARAMS);
   }
 });
 
@@ -360,21 +349,17 @@ app.delete("/deleteCategory", async (req, res) => {
           res.type("text").send(SUCCESSFUL_DELETE);
         } else {
           await db.close();
-          res.type("text").status(CLIENT_ERROR_CODE)
-            .send(INVALID_CATEGORY);
+          res.type("text").status(CLIENT_ERROR_CODE).send(INVALID_CATEGORY);
         }
       } else {
         await db.close();
-        res.type("text").status(CLIENT_ERROR_CODE)
-          .send(INVALID_USERNAME);
+        res.type("text").status(CLIENT_ERROR_CODE).send(INVALID_USERNAME);
       }
     } catch (err) {
-      res.type("text").status(SERVER_ERROR_CODE)
-        .send(SERVER_ERROR_MSG);
+      res.type("text").status(SERVER_ERROR_CODE).send(SERVER_ERROR_MSG);
     }
   } else {
-    res.type("text").status(CLIENT_ERROR_CODE)
-     .send(MISSING_PARAMS);
+    res.type("text").status(CLIENT_ERROR_CODE).send(MISSING_PARAMS);
   }
 });
 
@@ -404,26 +389,21 @@ app.delete("/deleteExpense", async (req, res) => {
             res.json(categoryRes);
           } else {
             await db.close();
-            res.type("text").status(CLIENT_ERROR_CODE)
-              .send(INVALID_CATEGORY);
+            res.type("text").status(CLIENT_ERROR_CODE).send(INVALID_CATEGORY);
           }
         } else {
           await db.close();
-          res.type("text").status(CLIENT_ERROR_CODE)
-            .send(INVALID_EXPENSE);
+          res.type("text").status(CLIENT_ERROR_CODE).send(INVALID_EXPENSE);
         }
       } else {
         await db.close();
-        res.type("text").status(CLIENT_ERROR_CODE)
-          .send(INVALID_USERNAME);
+        res.type("text").status(CLIENT_ERROR_CODE).send(INVALID_USERNAME);
       }
     } catch (err) {
-      res.type("text").status(SERVER_ERROR_CODE)
-        .send(SERVER_ERROR_MSG);
+      res.type("text").status(SERVER_ERROR_CODE).send(SERVER_ERROR_MSG);
     }
   } else {
-    res.type("text").status(CLIENT_ERROR_CODE)
-      .send(MISSING_PARAMS);
+    res.type("text").status(CLIENT_ERROR_CODE).send(MISSING_PARAMS);
   }
 });
 
@@ -451,8 +431,12 @@ function usernameValid(username) {
  * @returns {boolean} true if password is valid, false otherwise
  */
 function passwordValid(password) {
-  return password.length <= 8 && password.length >= 3 && /[0-9]+/.test(password) &&
-    /[a-zA-Z]+/.test(password);
+  return (
+    password.length <= 8 &&
+    password.length >= 3 &&
+    /[0-9]+/.test(password) &&
+    /[a-zA-Z]+/.test(password)
+  );
 }
 
 /**
@@ -488,7 +472,8 @@ async function usernameID(db, username) {
  * @returns {Object} id of expense with given id and owned by user
  */
 async function expenseValid(db, id, user_id) {
-  let query = "SELECT * FROM expenses e \
+  let query =
+    "SELECT * FROM expenses e \
     JOIN categories c ON c.id = e.category_id \
     JOIN users u ON u.id = c.user_id \
     WHERE e.id = ? AND u.id = ?";
@@ -502,14 +487,14 @@ async function expenseValid(db, id, user_id) {
  * that calls this one.
  * @returns {Object} - The database object for the connection.
  */
- async function getDBConnection() {
+async function getDBConnection() {
   const db = await sqlite.open({
     filename: BUDGET_DB,
-    driver: sqlite3.Database
+    driver: sqlite3.Database,
   });
   return db;
 }
 
-app.use(express.static('public'));
+app.use(express.static("public"));
 const PORT = process.env.PORT || DEFAULT_PORT;
 app.listen(PORT);
