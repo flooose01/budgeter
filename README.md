@@ -1,1 +1,3 @@
 # Budgeter
+
+Simple budgeter app
