@@ -495,6 +495,6 @@ async function getDBConnection() {
   return db;
 }
 
-app.use(express.static("public"));
+app.use(express.static("public", { index: "login.html" }));
 const PORT = process.env.PORT || DEFAULT_PORT;
 app.listen(PORT);
